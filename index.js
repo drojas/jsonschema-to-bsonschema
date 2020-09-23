@@ -42,11 +42,13 @@ var __importStar = (this && this.__importStar) || function (mod) {
     result["default"] = mod;
     return result;
 };
+var _a;
 Object.defineProperty(exports, "__esModule", { value: true });
 var glob = __importStar(require("glob"));
 var fs = __importStar(require("fs"));
 var refParser = __importStar(require("json-schema-ref-parser"));
 var JSONSchema = __importStar(require("json-schema"));
+// import * as path from 'path';
 var mongodb_1 = require("mongodb");
 function _transformSchemas(fileList, outputDirectory, baseUrl) {
     return __awaiter(this, void 0, void 0, function () {
@@ -100,7 +102,7 @@ function _transformSchemas(fileList, outputDirectory, baseUrl) {
                             // convert some formatted types to bsonTypes:
                             _convertBsonTypes(schema);
                             console.log('Completed all depths of de-duplication:');
-                            console.log(schema);
+                            console.log(JSON.stringify(schema, null, 4));
                             documentName = fileName.split('.json')[0];
                             outputFileName = (outputDirectory
                                 ? outputDirectory + '/' + documentName.split('/')[documentName.split('/').length - 1].split('.json')[0]
@@ -146,6 +148,10 @@ function _deduplicateBsonTypes(schema) {
     }
     return schema;
 }
+var formatToPattern = (_a = {},
+    _a['date'] = /^(-?(?:[1-9][0-9]*)?[0-9]{4})-(1[0-2]|0[1-9])-(3[01]|0[1-9]|[12][0-9])$/.source,
+    _a['email'] = /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/.source,
+    _a);
 /**
  *
  * @param schema
@@ -157,10 +163,27 @@ function _deduplicateBsonTypes(schema) {
  */
 function _convertBsonTypes(schema) {
     for (var i in schema) {
+        if (i === 'unique') {
+            delete schema[i];
+            continue;
+        }
         if (typeof schema[i] !== 'object')
             continue;
-        if (schema[i].unique)
-            delete schema[i].unique;
+        if (schema[i].type === 'integer') {
+            schema[i].bsonType = 'int';
+            delete schema[i].type;
+        }
+        if (typeof schema[i].exclusiveMinimum === 'number') {
+            schema[i].minimum = schema[i].exclusiveMinimum;
+            schema[i].exclusiveMinimum = true;
+        }
+        if (typeof schema[i].exclusiveMaximum === 'number') {
+            schema[i].maximum = schema[i].exclusiveMaximum;
+            schema[i].exclusiveMaximum = true;
+        }
+        if (schema[i].format in formatToPattern) {
+            schema[i].pattern = formatToPattern[schema[i].format];
+        }
         switch (schema[i].format) {
             case "email":
                 schema[i].bsonType = "string";
@@ -172,6 +195,10 @@ function _convertBsonTypes(schema) {
                 delete schema[i].format;
                 delete schema[i].type;
                 break;
+            case 'date':
+                schema[i].bsonType = 'string';
+                delete schema[i].format;
+                delete schema[i].type;
             default:
                 _convertBsonTypes(schema[i]);
                 break;

@@ -2,7 +2,7 @@ import * as glob from 'glob';
 import * as fs from 'fs';
 import * as refParser from 'json-schema-ref-parser';
 import * as JSONSchema from 'json-schema';
-import * as path from 'path';
+// import * as path from 'path';
 import { MongoClient, Db } from 'mongodb';
 
 async function _transformSchemas(fileList: Array<string>, outputDirectory?: string, baseUrl?: string): Promise<any> {
@@ -57,7 +57,7 @@ async function _transformSchemas(fileList: Array<string>, outputDirectory?: stri
         _convertBsonTypes(schema);
 
         console.log('Completed all depths of de-duplication:');
-        console.log(schema);
+        console.log(JSON.stringify(schema, null, 4));
         
         let documentName = fileName.split('.json')[0];
         /*let outputFileName = (outputDirectory 
@@ -106,14 +106,21 @@ function _deduplicateBsonTypes(schema: any): any {
     return schema;
 }
 
+const formatToPattern = {
+  ['date']: /^(-?(?:[1-9][0-9]*)?[0-9]{4})-(1[0-2]|0[1-9])-(3[01]|0[1-9]|[12][0-9])$/.source,
+  ['email']: /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/.source,
+}
+
 /**
- * 
- * @param schema 
- * 
+ *
+ * @param schema
+ *
  * @returns schema
- * 
- * @summary Converts jsonSchema types to bsonTypes based upon their formatting etc. 
+ *
+ * @summary Converts jsonSchema types to bsonTypes based upon their formatting etc.
  * (e.g. type: 'string', format: 'date-time' -> bsonType: 'Date')
+ *
+ * More info: https://json-schema.org/understanding-json-schema/reference/string.html
  */
 function _convertBsonTypes(schema: any) {
     for (let i in schema) {
@@ -123,6 +130,25 @@ function _convertBsonTypes(schema: any) {
         }
 
         if (typeof schema[i] !== 'object') continue;
+
+        if (schema[i].type === 'integer') {
+            schema[i].bsonType = 'int'
+            delete schema[i].type
+        }
+
+        if (typeof schema[i].exclusiveMinimum === 'number') {
+            schema[i].minimum = schema[i].exclusiveMinimum
+            schema[i].exclusiveMinimum = true
+        }
+
+        if (typeof schema[i].exclusiveMaximum === 'number') {
+            schema[i].maximum = schema[i].exclusiveMaximum
+            schema[i].exclusiveMaximum = true
+        }
+
+        if (schema[i].format in formatToPattern) {
+            schema[i].pattern = formatToPattern[schema[i].format as keyof typeof formatToPattern]
+        }
 
         switch (schema[i].format) {
             case "email":
@@ -135,6 +161,10 @@ function _convertBsonTypes(schema: any) {
                 delete schema[i].format;
                 delete schema[i].type;
                 break;
+            case 'date':
+                schema[i].bsonType = 'string'
+                delete schema[i].format;
+                delete schema[i].type;
             default:
                 _convertBsonTypes(schema[i]);
                 break;

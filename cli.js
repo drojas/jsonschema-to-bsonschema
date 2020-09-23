@@ -43,22 +43,24 @@ const argv = yargs.option('files', {
     description:'Attempt to add indices from the MongoDB schemas, extended to add uniqueness etc.'
 }).argv;
 
-json2bson.convert(argv.files, argv.outdir, {
-    verbose: argv.verbose,
-    breakOnSchemaValidationErrors: argv.break,
-    cwd: argv.workingDirectory
-}).then(() => {
-    if (!argv.deploy) return resolve();
-    try {
-        json2bson.deploy(argv.input, { connectionString: argv.connectionString }).then(() => {
-            if (argv.addIndices) {
-                json2bson.addIndices(argv.input).then(resolve, reject);
-            } else resolve();
-        })
-    } catch (ex) {
-        console.error(ex);
-        reject(ex);
-    }
-}, err => {
-    console.error(err);
-});
+(async () => {
+  try {
+    await json2bson.convert(argv.files, argv.outdir, {
+      verbose: argv.verbose,
+      breakOnSchemaValidationErrors: argv.break,
+      cwd: argv.workingDirectory
+    })
+  } catch (ex) {
+    console.error(ex);
+  }
+
+  if (!argv.deploy) return;
+  try {
+    await json2bson.deploy(argv.input, { connectionString: argv.connectionString })
+    if (argv.addIndices) {
+      await json2bson.addIndices(argv.input);
+    };
+  } catch (ex) {
+    console.error(ex);
+  }
+})()
